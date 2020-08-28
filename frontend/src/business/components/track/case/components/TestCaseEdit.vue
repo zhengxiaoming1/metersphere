@@ -2,7 +2,8 @@
 
   <div>
 
-    <el-dialog @close="close"
+    <el-dialog :close-on-click-modal="false"
+               @close="close"
                :title="operationType == 'edit' ? ( readOnly ? $t('test_track.case.view_case') : $t('test_track.case.edit_case')) : $t('test_track.case.create')"
                :visible.sync="dialogFormVisible" width="65%">
 
@@ -131,6 +132,7 @@
         <el-row v-if="form.method && form.method != 'auto'" type="flex" justify="center">
           <el-col :span="20">
             <el-table
+              v-if="isStepTableAlive"
               :data="form.steps"
               class="tb-edit"
               border
@@ -145,7 +147,7 @@
                     size="mini"
                     :disabled="readOnly"
                     type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 4}"
+                    :autosize="{ minRows: 1, maxRows: 6}"
                     :rows="2"
                     v-model="scope.row.desc"
                     :placeholder="$t('commons.input_content')"
@@ -159,7 +161,7 @@
                     size="mini"
                     :disabled="readOnly"
                     type="textarea"
-                    :autosize="{ minRows: 2, maxRows: 4}"
+                    :autosize="{ minRows: 1, maxRows: 6}"
                     :rows="2"
                     v-model="scope.row.result"
                     :placeholder="$t('commons.input_content')"
@@ -272,7 +274,8 @@ export default {
       },
       formLabelWidth: "120px",
       operationType: '',
-      isCreateContinue: false
+      isCreateContinue: false,
+      isStepTableAlive: true
     };
   },
   props: {
@@ -302,6 +305,10 @@ export default {
     }
   },
   methods: {
+    reload() {
+      this.isStepTableAlive = false;
+      this.$nextTick(() => (this.isStepTableAlive = true));
+    },
     open(testCase) {
       this.resetForm();
 
@@ -339,6 +346,7 @@ export default {
       }
 
       this.getSelectOptions();
+      this.reload();
       this.dialogFormVisible = true;
     },
     handleAddStep(index, data) {
