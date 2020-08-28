@@ -707,7 +707,7 @@ public class JmeterDocumentParser implements DocumentParser {
         Element backendListener = document.createElement(BACKEND_LISTENER);
         backendListener.setAttribute("guiclass", "BackendListenerGui");
         backendListener.setAttribute("testclass", "BackendListener");
-        backendListener.setAttribute("testname", "Backend Listener");
+        backendListener.setAttribute("testname", "Backend_Listener_" + context.getTestId());
         backendListener.setAttribute("enabled", "true");
         listenerParent.appendChild(backendListener);
         listenerParent.appendChild(document.createElement(HASH_TREE_ELEMENT));

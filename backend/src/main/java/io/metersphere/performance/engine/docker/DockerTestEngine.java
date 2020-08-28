@@ -77,7 +77,7 @@ public class DockerTestEngine extends AbstractEngine {
         String testId = context.getTestId();
         String content = context.getContent();
 
-        String uri = String.format(BASE_URL + "/jmeter/container/start", nodeIp, port);
+        String uri = String.format(BASE_URL + "/jmeter/start", nodeIp, port);
 
         TestRequest testRequest = new TestRequest();
         testRequest.setSize(1);
@@ -104,7 +104,7 @@ public class DockerTestEngine extends AbstractEngine {
             String ip = node.getIp();
             Integer port = node.getPort();
 
-            String uri = String.format(BASE_URL + "/jmeter/container/stop/" + testId, ip, port);
+            String uri = String.format(BASE_URL + "/jmeter/stop/" + testId, ip, port);
             try {
                 restTemplateWithTimeOut.getForObject(uri, String.class);
             } catch (Exception e) {
