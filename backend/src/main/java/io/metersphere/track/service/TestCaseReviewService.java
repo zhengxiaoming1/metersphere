@@ -3,11 +3,12 @@ package io.metersphere.track.service;
 import io.metersphere.base.domain.*;
 import io.metersphere.base.mapper.*;
 import io.metersphere.base.mapper.ext.ExtProjectMapper;
+import io.metersphere.base.mapper.ext.ExtTestCaseMapper;
 import io.metersphere.base.mapper.ext.ExtTestCaseReviewMapper;
 import io.metersphere.base.mapper.ext.ExtTestReviewCaseMapper;
 import io.metersphere.commons.constants.TestCaseReviewStatus;
-import io.metersphere.commons.constants.TestPlanStatus;
 import io.metersphere.commons.constants.TestPlanTestCaseStatus;
+import io.metersphere.commons.constants.TestReviewCaseStatus;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.user.SessionUser;
 import io.metersphere.commons.utils.LogUtil;
@@ -20,7 +21,11 @@ import io.metersphere.service.UserService;
 import io.metersphere.track.dto.TestCaseReviewDTO;
 import io.metersphere.track.dto.TestReviewCaseDTO;
 import io.metersphere.track.dto.TestReviewDTOWithMetric;
-import io.metersphere.track.request.testreview.*;
+import io.metersphere.track.request.testcase.QueryTestCaseRequest;
+import io.metersphere.track.request.testreview.QueryCaseReviewRequest;
+import io.metersphere.track.request.testreview.QueryTestReviewRequest;
+import io.metersphere.track.request.testreview.ReviewRelevanceRequest;
+import io.metersphere.track.request.testreview.SaveTestCaseReviewRequest;
 import org.apache.commons.beanutils.BeanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.ExecutorType;
@@ -31,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
-import java.lang.reflect.InvocationTargetException;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -65,7 +70,8 @@ public class TestCaseReviewService {
     TestCaseReviewTestCaseMapper testCaseReviewTestCaseMapper;
     @Resource
     MailService mailService;
-
+    @Resource
+    ExtTestCaseMapper extTestCaseMapper;
 
     public void saveTestCaseReview(SaveTestCaseReviewRequest reviewRequest) {
         checkCaseReviewExist(reviewRequest);
@@ -73,7 +79,6 @@ public class TestCaseReviewService {
         String reviewId = UUID.randomUUID().toString();
         List<String> projectIds = reviewRequest.getProjectIds();
         List<String> userIds = reviewRequest.getUserIds();
-
         projectIds.forEach(projectId -> {
             TestCaseReviewProject testCaseReviewProject = new TestCaseReviewProject();
             testCaseReviewProject.setProjectId(projectId);
@@ -94,9 +99,11 @@ public class TestCaseReviewService {
         reviewRequest.setCreator(SessionUtils.getUser().getId());
         reviewRequest.setStatus(TestCaseReviewStatus.Prepare.name());
         testCaseReviewMapper.insert(reviewRequest);
-        SaveCommentRequest request = new SaveCommentRequest();
-        TestCaseWithBLOBs testCaseWithBLOBs = new TestCaseWithBLOBs();
-        mailService.sendHtml(userIds, "reviewer", reviewRequest, request, testCaseWithBLOBs);
+        try {
+            mailService.sendReviewerNotice(userIds, reviewRequest);
+        } catch (Exception e) {
+            LogUtil.error(e);
+        }
 
     }
 
@@ -144,7 +151,7 @@ public class TestCaseReviewService {
     }
 
     public List<TestCaseReviewDTO> recent(String currentWorkspaceId) {
-        return extTestCaseReviewMapper.listByWorkspaceId(currentWorkspaceId);
+        return extTestCaseReviewMapper.listByWorkspaceId(currentWorkspaceId, SessionUtils.getUserId());
     }
 
     public void editCaseReview(SaveTestCaseReviewRequest testCaseReview) {
@@ -153,9 +160,11 @@ public class TestCaseReviewService {
         testCaseReview.setUpdateTime(System.currentTimeMillis());
         checkCaseReviewExist(testCaseReview);
         testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
-        SaveCommentRequest request = new SaveCommentRequest();
-        TestCaseWithBLOBs testCaseWithBLOBs = new TestCaseWithBLOBs();
-        mailService.sendHtml(testCaseReview.getUserIds(), "reviewer", testCaseReview, request, testCaseWithBLOBs);
+        try {
+            mailService.sendReviewerNotice(testCaseReview.getUserIds(), testCaseReview);
+        } catch (Exception e) {
+            LogUtil.error(e);
+        }
     }
 
     private void editCaseReviewer(SaveTestCaseReviewRequest testCaseReview) {
@@ -267,14 +276,20 @@ public class TestCaseReviewService {
         List<Project> projects = projectMapper.selectByExample(projectExample);
         List<String> projectIds = projects.stream().map(Project::getId).collect(Collectors.toList());
 
-        TestCaseReviewProjectExample testCaseReviewProjectExample = new TestCaseReviewProjectExample();
-        testCaseReviewProjectExample.createCriteria().andProjectIdIn(projectIds);
-        List<TestCaseReviewProject> testCaseReviewProjects = testCaseReviewProjectMapper.selectByExample(testCaseReviewProjectExample);
-        List<String> reviewIds = testCaseReviewProjects.stream().map(TestCaseReviewProject::getReviewId).collect(Collectors.toList());
+        if (!CollectionUtils.isEmpty(projectIds)) {
+            TestCaseReviewProjectExample testCaseReviewProjectExample = new TestCaseReviewProjectExample();
+            testCaseReviewProjectExample.createCriteria().andProjectIdIn(projectIds);
+            List<TestCaseReviewProject> testCaseReviewProjects = testCaseReviewProjectMapper.selectByExample(testCaseReviewProjectExample);
+            List<String> reviewIds = testCaseReviewProjects.stream().map(TestCaseReviewProject::getReviewId).collect(Collectors.toList());
 
-        TestCaseReviewExample testCaseReviewExample = new TestCaseReviewExample();
-        testCaseReviewExample.createCriteria().andIdIn(reviewIds);
-        return testCaseReviewMapper.selectByExample(testCaseReviewExample);
+            if (!CollectionUtils.isEmpty(reviewIds)) {
+                TestCaseReviewExample testCaseReviewExample = new TestCaseReviewExample();
+                testCaseReviewExample.createCriteria().andIdIn(reviewIds);
+                return testCaseReviewMapper.selectByExample(testCaseReviewExample);
+            }
+        }
+
+        return new ArrayList<>();
     }
 
     public void testReviewRelevance(ReviewRelevanceRequest request) {
@@ -289,6 +304,16 @@ public class TestCaseReviewService {
 
         if (testCaseIds.isEmpty()) {
             return;
+        }
+        // 如果是关联全部指令则从新查询未关联的案例
+        if (testCaseIds.get(0).equals("all")) {
+            QueryTestCaseRequest req = new QueryTestCaseRequest();
+            req.setReviewId(request.getReviewId());
+            req.setProjectId(request.getProjectId());
+            List<TestCase> testCases = extTestCaseMapper.getTestCaseByNotInReview(req);
+            if (!testCases.isEmpty()) {
+                testCaseIds = testCases.stream().map(testCase -> testCase.getId()).collect(Collectors.toList());
+            }
         }
 
         SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
@@ -335,29 +360,24 @@ public class TestCaseReviewService {
         testCaseReview.setId(reviewId);
 
         for (String status : statusList) {
-            if (StringUtils.equals(status, TestPlanTestCaseStatus.Prepare.name())) {
-                testCaseReview.setStatus(TestPlanStatus.Underway.name());
+            if (StringUtils.equals(status, TestReviewCaseStatus.Prepare.name())) {
+                testCaseReview.setStatus(TestCaseReviewStatus.Underway.name());
                 testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
                 return;
             }
         }
-        testCaseReview.setStatus(TestPlanStatus.Completed.name());
-        SaveCommentRequest request = new SaveCommentRequest();
-        TestCaseWithBLOBs testCaseWithBLOBs = new TestCaseWithBLOBs();
+        testCaseReview.setStatus(TestCaseReviewStatus.Completed.name());
         SaveTestCaseReviewRequest testCaseReviewRequest = new SaveTestCaseReviewRequest();
         TestCaseReview _testCaseReview = testCaseReviewMapper.selectByPrimaryKey(reviewId);
         List<String> userIds = new ArrayList<>();
         userIds.add(_testCaseReview.getCreator());
-
+        testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
         try {
             BeanUtils.copyProperties(testCaseReviewRequest, _testCaseReview);
-        } catch (IllegalAccessException e) {
-            LogUtil.error(e);
-        } catch (InvocationTargetException e) {
+            mailService.sendEndNotice(userIds, testCaseReviewRequest);
+        } catch (Exception e) {
             LogUtil.error(e);
         }
-        mailService.sendHtml(userIds, "end", testCaseReviewRequest, request, testCaseWithBLOBs);
-        testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
     }
 
     public List<TestReviewDTOWithMetric> listRelateAll(String type) {
@@ -405,16 +425,19 @@ public class TestCaseReviewService {
 
                 testReview.setReviewed(0);
                 testReview.setTotal(0);
+                testReview.setPass(0);
                 if (testCases != null) {
                     testReview.setTotal(testCases.size());
                     testCases.forEach(testCase -> {
-                        if (!StringUtils.equals(testCase.getStatus(), TestPlanTestCaseStatus.Prepare.name())
-                                && !StringUtils.equals(testCase.getStatus(), TestPlanTestCaseStatus.Underway.name())) {
+                        if (!StringUtils.equals(testCase.getReviewStatus(), TestReviewCaseStatus.Prepare.name())) {
                             testReview.setReviewed(testReview.getReviewed() + 1);
+                        }
+                        if (StringUtils.equals(testCase.getReviewStatus(), TestReviewCaseStatus.Pass.name())) {
+                            testReview.setPass(testReview.getPass() + 1);
                         }
                     });
                 }
-                testReview.setTestRate(MathUtils.getPercentWithDecimal(testReview.getTotal() == 0 ? 0 : testReview.getReviewed() * 1.0 / testReview.getTotal()));
+
             });
         }
         return testReviews;

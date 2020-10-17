@@ -6,6 +6,7 @@ import com.alibaba.fastjson.JSONObject;
 import io.metersphere.base.domain.*;
 import io.metersphere.base.mapper.*;
 import io.metersphere.base.mapper.ext.ExtProjectMapper;
+import io.metersphere.base.mapper.ext.ExtTestCaseMapper;
 import io.metersphere.base.mapper.ext.ExtTestPlanMapper;
 import io.metersphere.base.mapper.ext.ExtTestPlanTestCaseMapper;
 import io.metersphere.commons.constants.TestPlanStatus;
@@ -24,6 +25,7 @@ import io.metersphere.track.dto.TestPlanCaseDTO;
 import io.metersphere.track.dto.TestPlanDTO;
 import io.metersphere.track.dto.TestPlanDTOWithMetric;
 import io.metersphere.track.request.testcase.PlanCaseRelevanceRequest;
+import io.metersphere.track.request.testcase.QueryTestCaseRequest;
 import io.metersphere.track.request.testcase.QueryTestPlanRequest;
 import io.metersphere.track.request.testplan.AddTestPlanRequest;
 import io.metersphere.track.request.testplancase.QueryTestPlanCaseRequest;
@@ -37,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -77,6 +80,8 @@ public class TestPlanService {
     TestPlanProjectService testPlanProjectService;
     @Resource
     ProjectMapper projectMapper;
+    @Resource
+    ExtTestCaseMapper extTestCaseMapper;
 
     public void addTestPlan(AddTestPlanRequest testPlan) {
         if (getTestPlanByName(testPlan.getName()).size() > 0) {
@@ -95,10 +100,6 @@ public class TestPlanService {
 
         testPlan.setId(testPlanId);
         testPlan.setStatus(TestPlanStatus.Prepare.name());
-        testPlan.setPlannedStartTime(System.currentTimeMillis());
-        testPlan.setPlannedEndTime(System.currentTimeMillis());
-        testPlan.setActualStartTime(System.currentTimeMillis());
-        testPlan.setActualEndTime(System.currentTimeMillis());
         testPlan.setCreateTime(System.currentTimeMillis());
         testPlan.setUpdateTime(System.currentTimeMillis());
         testPlanMapper.insert(testPlan);
@@ -120,16 +121,14 @@ public class TestPlanService {
         testPlan.setUpdateTime(System.currentTimeMillis());
         checkTestPlanExist(testPlan);
         //进行中状态，写入实际开始时间
-        if ("Underway".equals(testPlan.getStatus())) {
+        if (TestPlanStatus.Underway.name().equals(testPlan.getStatus())) {
             testPlan.setActualStartTime(System.currentTimeMillis());
-            return testPlanMapper.updateByPrimaryKeySelective(testPlan);
-        } else if("Completed".equals(testPlan.getStatus())){
+
+        } else if (TestPlanStatus.Completed.name().equals(testPlan.getStatus())) {
             //已完成，写入实际完成时间
             testPlan.setActualEndTime(System.currentTimeMillis());
-            return testPlanMapper.updateByPrimaryKeySelective(testPlan);
-        } else {
-            return 0;
         }
+        return testPlanMapper.updateByPrimaryKeySelective(testPlan);
     }
 
     private void editTestPlanProject(TestPlanDTO testPlan) {
@@ -212,6 +211,16 @@ public class TestPlanService {
             return;
         }
 
+        // 如果是关联全部指令则从新查询未关联的案例
+        if (testCaseIds.get(0).equals("all")) {
+            QueryTestCaseRequest req = new QueryTestCaseRequest();
+            req.setPlanId(request.getPlanId());
+            req.setProjectId(request.getProjectId());
+            List<TestCase> testCases = extTestCaseMapper.getTestCaseByNotInPlan(req);
+            if (!testCases.isEmpty()) {
+                testCaseIds = testCases.stream().map(testCase -> testCase.getId()).collect(Collectors.toList());
+            }
+        }
         TestCaseExample testCaseExample = new TestCaseExample();
         testCaseExample.createCriteria().andIdIn(testCaseIds);
 
@@ -254,7 +263,8 @@ public class TestPlanService {
             return null;
         }
         TestPlanExample testPlanTestCaseExample = new TestPlanExample();
-        testPlanTestCaseExample.createCriteria().andWorkspaceIdEqualTo(currentWorkspaceId);
+        testPlanTestCaseExample.createCriteria().andWorkspaceIdEqualTo(currentWorkspaceId)
+                .andPrincipalEqualTo(SessionUtils.getUserId());
         testPlanTestCaseExample.setOrderByClause("update_time desc");
         return testPlanMapper.selectByExample(testPlanTestCaseExample);
     }

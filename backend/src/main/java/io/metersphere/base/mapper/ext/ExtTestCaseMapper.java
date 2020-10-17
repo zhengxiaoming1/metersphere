@@ -20,4 +20,17 @@ public interface ExtTestCaseMapper {
 
     TestCase getMaxNumByProjectId(@Param("projectId") String projectId);
 
+    List<TestCase> getTestCaseByNotInPlan(@Param("request") QueryTestCaseRequest request);
+
+    List<TestCase> getTestCaseByNotInReview(@Param("request") QueryTestCaseRequest request);
+
+    /**
+     * 检查某工作空间下是否有某用例
+     *
+     * @param caseId
+     * @param workspaceId
+     * @return TestCase ID
+     */
+    List<String> checkIsHave(@Param("caseId") String caseId, @Param("workspaceId") String workspaceId);
+
 }

@@ -5,11 +5,24 @@
       <el-input v-model="request.name" maxlength="300" show-word-limit/>
     </el-form-item>
 
-    <el-form-item :label="$t('api_test.request.sql.dataSource')" prop="dataSource">
-      <el-select v-model="request.dataSource">
-        <el-option v-for="(item, index) in databaseConfigsOptions" :key="index" :value="item.id" :label="item.name"/>
-      </el-select>
-    </el-form-item>
+    <div class="one-row">
+      <el-form-item :label="$t('api_test.request.sql.dataSource')" prop="dataSource">
+        <el-select v-model="request.dataSource">
+          <el-option v-for="(item, index) in databaseConfigsOptions" :key="index" :value="item.id" :label="item.name"/>
+        </el-select>
+      </el-form-item>
+
+      <el-form-item :label="$t('api_test.request.sql.timeout')" prop="queryTimeout">
+        <el-input-number :disabled="isReadOnly" size="mini" v-model="request.queryTimeout" :placeholder="$t('commons.millisecond')" :max="1000*10000000" :min="0"/>
+      </el-form-item>
+
+      <el-form-item>
+        <el-switch
+          v-model="request.useEnvironment"
+          :active-text="$t('api_test.request.refer_to_environment')" @change="getDatabaseConfigsOptions">
+        </el-switch>
+      </el-form-item>
+    </div>
 
     <el-form-item :label="$t('api_test.request.sql.result_variable')" prop="resultVariable">
       <el-input v-model="request.resultVariable" maxlength="300" show-word-limit/>
@@ -25,20 +38,13 @@
       <!--</el-select>-->
     <!--</el-form-item>-->
 
-    <el-form-item :label="$t('api_test.request.sql.timeout')" prop="queryTimeout">
-     <el-input-number :disabled="isReadOnly" size="mini" v-model="request.queryTimeout" :placeholder="$t('commons.millisecond')" :max="1000*10000000" :min="0"/>
-    </el-form-item>
-
-    <el-form-item>
-      <el-switch
-        v-model="request.useEnvironment"
-        :active-text="$t('api_test.request.refer_to_environment')" @change="getDatabaseConfigsOptions">
-      </el-switch>
-    </el-form-item>
-
     <el-button :disabled="!request.enable || !scenario.enable || isReadOnly" class="debug-button" size="small" type="primary" @click="runDebug">{{$t('api_test.request.debug')}}</el-button>
 
     <el-tabs v-model="activeName">
+      <el-tab-pane :label="$t('api_test.scenario.variables')" name="variables">
+        <ms-api-scenario-variables :is-read-only="isReadOnly" :items="request.variables"
+                                   :description="$t('api_test.scenario.kv_description')"/>
+      </el-tab-pane>
       <el-tab-pane :label="$t('api_test.request.sql.sql_script')" name="sql">
         <div class="sql-content" >
           <ms-code-edit mode="sql" :read-only="isReadOnly" :modes="['sql']" :data.sync="request.query" theme="eclipse" ref="codeEdit"/>
@@ -72,10 +78,12 @@
   import MsDubboConsumerService from "@/business/components/api/test/components/request/dubbo/ConsumerAndService";
   import MsJsr233Processor from "../processor/Jsr233Processor";
   import MsCodeEdit from "../../../../common/components/MsCodeEdit";
+  import MsApiScenarioVariables from "../ApiScenarioVariables";
 
   export default {
     name: "MsApiSqlRequestForm",
     components: {
+      MsApiScenarioVariables,
       MsCodeEdit,
       MsJsr233Processor,
       MsDubboConsumerService,
@@ -94,7 +102,7 @@
 
     data() {
       return {
-        activeName: "sql",
+        activeName: "variables",
         databaseConfigsOptions: [],
         rules: {
           name: [
@@ -145,6 +153,14 @@
 
   .sql-content {
     height: calc(100vh - 570px);
+  }
+
+  .one-row .el-form-item {
+    display: inline-block;
+  }
+
+  .one-row .el-form-item:nth-child(2) {
+    margin-left: 60px;
   }
 
 </style>

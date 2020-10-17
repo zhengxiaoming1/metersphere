@@ -9,7 +9,7 @@
           <div class="request-type">
             {{ request.showType() }}
           </div>
-          <div class="request-method">
+          <div class="request-method" :style="{'color': getColor(request.enable, request.showMethod())}">
             {{ request.showMethod() }}
           </div>
           <div class="request-name">
@@ -50,6 +50,7 @@
         <el-radio :label="types.HTTP">HTTP</el-radio>
         <el-radio :label="types.DUBBO">DUBBO</el-radio>
         <el-radio :label="types.SQL">SQL</el-radio>
+        <el-radio :label="types.TCP">TCP</el-radio>
       </el-radio-group>
       <el-button slot="reference" :disabled="isReadOnly"
                  class="request-create" type="primary" size="mini" icon="el-icon-plus" plain/>
@@ -84,7 +85,13 @@ export default {
       selected: 0,
       visible: false,
       types: RequestFactory.TYPES,
-      type: ""
+      type: "",
+      methodColorMap: new Map([
+        ['GET', "#61AFFE"], ['POST', '#49CC90'], ['PUT', '#fca130'],
+        ['PATCH', '#E2EE11'], ['DELETE', '#f93e3d'], ['OPTIONS', '#0EF5DA'],
+        ['HEAD', '#8E58E7'], ['CONNECT', '#90AFAE'],
+        ['DUBBO', '#C36EEF'],['SQL', '#0AEAD4'],['TCP', '#0A52DF'],
+      ])
     }
   },
 
@@ -153,6 +160,11 @@ export default {
         case "wait":
           this.addTimer(command.index);
           break;
+      }
+    },
+    getColor(enable, method) {
+      if (enable) {
+        return this.methodColorMap.get(method);
       }
     },
     select(request) {

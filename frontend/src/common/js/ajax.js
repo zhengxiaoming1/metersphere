@@ -53,11 +53,15 @@ export default {
         login();
         return;
       }
+      if (error.response && error.response.status === 403) {
+        window.location.href = "/";
+        return;
+      }
       result.loading = false;
       window.console.error(error.response || error.message);
       if (error.response && error.response.data) {
         if (error.response.headers["authentication-status"] !== "invalid") {
-          Message.error({message: error.response.data.message, showClose: true});
+          Message.error({message: error.response.data.message || error.response.data, showClose: true});
         }
       } else {
         Message.error({message: error.message, showClose: true});

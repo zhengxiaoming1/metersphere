@@ -30,15 +30,26 @@ public class XmindCaseParser {
     private TestCaseService testCaseService;
     private String maintainer;
     private String projectId;
-    private StringBuffer process; // 过程校验记录
-    // 已存在用例名称
+    /**
+     * 过程校验记录
+     */
+    private StringBuffer process;
+    /**
+     * 已存在用例名称
+     */
     private Set<String> testCaseNames;
-
-    // 转换后的案例信息
+    /**
+     * 转换后的案例信息
+     */
     private List<TestCaseWithBLOBs> testCases;
-
-    // 案例详情重写了hashCode方法去重用
+    /**
+     * 案例详情重写了hashCode方法去重用
+     */
     private List<TestCaseExcelData> compartDatas;
+    /**
+     * 记录没有用例的目录
+     */
+    private List<String> nodePaths;
 
     public XmindCaseParser(TestCaseService testCaseService, String userId, String projectId, Set<String> testCaseNames) {
         this.testCaseService = testCaseService;
@@ -48,56 +59,151 @@ public class XmindCaseParser {
         testCases = new LinkedList<>();
         compartDatas = new ArrayList<>();
         process = new StringBuffer();
+        nodePaths = new ArrayList<>();
     }
 
-    // 这里清理是为了 加快jvm 回收
+    private static final String TC_REGEX = "(?:tc:|tc：|tc)";
+    private static final String PC_REGEX = "(?:pc:|pc：|pc)";
+    private static final String RC_REGEX = "(?:rc:|rc：|rc)";
+
     public void clear() {
         compartDatas.clear();
         testCases.clear();
         testCaseNames.clear();
+        nodePaths.clear();
     }
 
     public List<TestCaseWithBLOBs> getTestCase() {
         return this.testCases;
     }
 
+    public List<String> getNodePaths() {
+        return this.nodePaths;
+    }
+
     private final Map<String, String> caseTypeMap = ImmutableMap.of("功能测试", "functional", "性能测试", "performance", "接口测试", "api");
 
-    // 递归处理案例数据
-    private void recursion(StringBuffer processBuffer, Attached parent, int level, String nodePath, List<Attached> attacheds) {
+    /**
+     * 验证模块的合规性
+     */
+    public void validate() {
+        nodePaths.forEach(nodePath -> {
+            String[] nodes = nodePath.split("/");
+            if (nodes.length > TestCaseConstants.MAX_NODE_DEPTH + 1) {
+                process.append(Translator.get("test_case_node_level_tip") +
+                        TestCaseConstants.MAX_NODE_DEPTH + Translator.get("test_case_node_level") + "; ");
+            }
+            String path = "";
+            for (int i = 0; i < nodes.length; i++) {
+                path += nodes[i].trim() + "/";
+                if (i != 0 && StringUtils.equals(nodes[i].trim(), "")) {
+                    process.append(path + "：" + Translator.get("module_not_null") + "; ");
+                } else if (nodes[i].trim().length() > 30) {
+                    process.append(nodes[i].trim() + "：" + Translator.get("test_track.length_less_than") + "30 ;");
+                }
+            }
+        });
+    }
+
+    /**
+     * 验证用例的合规性
+     */
+    private boolean validate(TestCaseWithBLOBs data) {
+        String nodePath = data.getNodePath();
+        StringBuilder stringBuilder = new StringBuilder();
+
+        if (data.getName().length() > 50) {
+            stringBuilder.append(data.getName() + "：" + Translator.get("test_case") + Translator.get("test_track.length_less_than") + "50 ;");
+        }
+
+        if (!StringUtils.isEmpty(nodePath)) {
+            String[] nodes = nodePath.split("/");
+            if (nodes.length > TestCaseConstants.MAX_NODE_DEPTH + 1) {
+                stringBuilder.append(Translator.get("test_case_node_level_tip") +
+                        TestCaseConstants.MAX_NODE_DEPTH + Translator.get("test_case_node_level") + "; ");
+            }
+            for (int i = 0; i < nodes.length; i++) {
+                if (i != 0 && StringUtils.equals(nodes[i].trim(), "")) {
+                    stringBuilder.append(Translator.get("test_case") + "，" + data.getName() + Translator.get("module_not_null") + "; ");
+                    break;
+                } else if (nodes[i].trim().length() > 30) {
+                    stringBuilder.append(nodes[i].trim() + "：" + Translator.get("module") + Translator.get("test_track.length_less_than") + "30 ;");
+                    break;
+                }
+            }
+        }
+
+        if (StringUtils.equals(data.getType(), TestCaseConstants.Type.Functional.getValue()) && StringUtils.equals(data.getMethod(), TestCaseConstants.Method.Auto.getValue())) {
+            stringBuilder.append(Translator.get("functional_method_tip") + "; ");
+        }
+
+        if (testCaseNames.contains(data.getName())) {
+            boolean dbExist = testCaseService.exist(data);
+            if (dbExist) {
+                // db exist
+                stringBuilder.append(Translator.get("test_case_already_exists_excel") + "：" + data.getName() + "; ");
+            }
+
+        } else {
+            testCaseNames.add(data.getName());
+        }
+        if (!StringUtils.isEmpty(stringBuilder.toString())) {
+            process.append(stringBuilder.toString());
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 递归处理案例数据
+     */
+    private void recursion(Attached parent, int level, List<Attached> attacheds) {
         for (Attached item : attacheds) {
-            if (isAvailable(item.getTitle(), "(?:tc：|tc:|tc)")) { // 用例
+            if (isAvailable(item.getTitle(), TC_REGEX)) {
                 item.setParent(parent);
                 this.newTestCase(item.getTitle(), parent.getPath(), item.getChildren() != null ? item.getChildren().getAttached() : null);
             } else {
-                nodePath = parent.getPath() + "/" + item.getTitle();
+                String nodePath = parent.getPath() + "/" + item.getTitle();
                 item.setPath(nodePath);
+                item.setParent(parent);
                 if (item.getChildren() != null && !item.getChildren().getAttached().isEmpty()) {
-                    item.setParent(parent);
-                    recursion(processBuffer, item, level + 1, nodePath, item.getChildren().getAttached());
+                    recursion(item, level + 1, item.getChildren().getAttached());
+                } else {
+                    if (!nodePath.startsWith("/")) {
+                        nodePath = "/" + nodePath;
+                    }
+                    if (nodePath.endsWith("/")) {
+                        nodePath = nodePath.substring(0, nodePath.length() - 1);
+                    }
+                    // 没有用例的路径
+                    nodePaths.add(nodePath);
                 }
             }
         }
     }
 
     private boolean isAvailable(String str, String regex) {
-        if (StringUtils.isEmpty(str) || StringUtils.isEmpty(regex))
+        if (StringUtils.isEmpty(str) || StringUtils.isEmpty(regex)) {
             return false;
+        }
         Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
         Matcher result = pattern.matcher(str);
         return result.find();
     }
 
     private String replace(String str, String regex) {
-        if (StringUtils.isEmpty(str) || StringUtils.isEmpty(regex))
+        if (StringUtils.isEmpty(str) || StringUtils.isEmpty(regex)) {
             return str;
+        }
         Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
         Matcher result = pattern.matcher(str);
         str = result.replaceAll("");
         return str;
     }
 
-    // 获取步骤数据
+    /**
+     * 获取步骤数据
+     */
     private String getSteps(List<Attached> attacheds) {
         JSONArray jsonArray = new JSONArray();
         for (int i = 0; i < attacheds.size(); i++) {
@@ -113,7 +219,9 @@ public class XmindCaseParser {
         return jsonArray.toJSONString();
     }
 
-    // 初始化一个用例
+    /**
+     * 初始化一个用例
+     */
     private void newTestCase(String title, String nodePath, List<Attached> attacheds) {
         TestCaseWithBLOBs testCase = new TestCaseWithBLOBs();
         testCase.setProjectId(projectId);
@@ -123,13 +231,13 @@ public class XmindCaseParser {
         testCase.setType("functional");
 
         String tc = title.replace("：", ":");
-        String tcArr[] = tc.split(":");
+        String[] tcArr = tc.split(":");
         if (tcArr.length != 2) {
             process.append(Translator.get("test_case_name") + "【 " + title + " 】" + Translator.get("incorrect_format"));
             return;
         }
         // 用例名称
-        testCase.setName(this.replace(tcArr[1], "tc:|tc：|tc"));
+        testCase.setName(this.replace(tcArr[1], TC_REGEX));
 
         if (!nodePath.startsWith("/")) {
             nodePath = "/" + nodePath;
@@ -141,7 +249,7 @@ public class XmindCaseParser {
 
         // 用例等级和用例性质处理
         if (tcArr[0].indexOf("-") != -1) {
-            String otArr[] = tcArr[0].split("-");
+            String[] otArr = tcArr[0].split("-");
             for (String item : otArr) {
                 if (item.toUpperCase().startsWith("P")) {
                     testCase.setPriority(item.toUpperCase());
@@ -154,10 +262,10 @@ public class XmindCaseParser {
         List<Attached> steps = new LinkedList<>();
         if (attacheds != null && !attacheds.isEmpty()) {
             attacheds.forEach(item -> {
-                if (isAvailable(item.getTitle(), "(?:pc:|pc：)")) {
-                    testCase.setPrerequisite(replace(item.getTitle(), "(?:pc:|pc：)"));
-                } else if (isAvailable(item.getTitle(), "(?:rc:|rc：)")) {
-                    testCase.setRemark(replace(item.getTitle(), "(?:rc:|rc：)"));
+                if (isAvailable(item.getTitle(), PC_REGEX)) {
+                    testCase.setPrerequisite(replace(item.getTitle(), PC_REGEX));
+                } else if (isAvailable(item.getTitle(), RC_REGEX)) {
+                    testCase.setRemark(replace(item.getTitle(), RC_REGEX));
                 } else {
                     steps.add(item);
                 }
@@ -188,69 +296,42 @@ public class XmindCaseParser {
         compartDatas.add(compartData);
     }
 
-    // 验证合法性
-    private boolean validate(TestCaseWithBLOBs data) {
-        String nodePath = data.getNodePath();
-        StringBuilder stringBuilder = new StringBuilder();
-
-        if (!StringUtils.isEmpty(nodePath)) {
-            String[] nodes = nodePath.split("/");
-            if (nodes.length > TestCaseConstants.MAX_NODE_DEPTH + 1) {
-                stringBuilder.append(Translator.get("test_case_node_level_tip") +
-                        TestCaseConstants.MAX_NODE_DEPTH + Translator.get("test_case_node_level") + "; ");
-            }
-            for (int i = 0; i < nodes.length; i++) {
-                if (i != 0 && StringUtils.equals(nodes[i].trim(), "")) {
-                    stringBuilder.append(Translator.get("module_not_null") + "; ");
-                    break;
-                }
-            }
-        }
-
-        if (StringUtils.equals(data.getType(), TestCaseConstants.Type.Functional.getValue()) && StringUtils.equals(data.getMethod(), TestCaseConstants.Method.Auto.getValue())) {
-            stringBuilder.append(Translator.get("functional_method_tip") + "; ");
-        }
-
-        if (testCaseNames.contains(data.getName())) {
-            boolean dbExist = testCaseService.exist(data);
-            if (dbExist) {
-                // db exist
-                stringBuilder.append(Translator.get("test_case_already_exists_excel") + "：" + data.getName() + "; ");
-            }
-
-        } else {
-            testCaseNames.add(data.getName());
-        }
-        if (!StringUtils.isEmpty(stringBuilder.toString())) {
-            process.append(stringBuilder.toString());
-            return false;
-        }
-        return true;
-    }
-
-    // 导入思维导图处理
+    /**
+     * 导入思维导图处理
+     */
     public String parse(MultipartFile multipartFile) {
-        StringBuffer processBuffer = new StringBuffer();
         try {
             // 获取思维导图内容
-            JsonRootBean root = XmindParser.parseObject(multipartFile);
-            if (root != null && root.getRootTopic() != null && root.getRootTopic().getChildren() != null) {
-                // 判断是模块还是用例
-                for (Attached item : root.getRootTopic().getChildren().getAttached()) {
-                    if (isAvailable(item.getTitle(), "(?:tc:|tc：|tc)")) { // 用例
-                        return replace(item.getTitle(), "(?:tc:|tc：|tc)") + "：" + Translator.get("test_case_create_module_fail");
-                    } else {
-                        item.setPath(item.getTitle());
-                        if (item.getChildren() != null && !item.getChildren().getAttached().isEmpty()) {
-                            item.setPath(item.getTitle());
-                            recursion(processBuffer, item, 1, item.getPath(), item.getChildren().getAttached());
+            List<JsonRootBean> roots = XmindParser.parseObject(multipartFile);
+            for (JsonRootBean root : roots) {
+                if (root != null && root.getRootTopic() != null && root.getRootTopic().getChildren() != null) {
+                    // 判断是模块还是用例
+                    for (Attached item : root.getRootTopic().getChildren().getAttached()) {
+                        // 用例
+                        if (isAvailable(item.getTitle(), TC_REGEX)) {
+                            return replace(item.getTitle(), TC_REGEX) + "：" + Translator.get("test_case_create_module_fail");
+                        } else {
+                            String nodePath = item.getTitle();
+                            item.setPath(nodePath);
+                            if (item.getChildren() != null && !item.getChildren().getAttached().isEmpty()) {
+                                recursion(item, 1, item.getChildren().getAttached());
+                            } else {
+                                if (!nodePath.startsWith("/")) {
+                                    nodePath = "/" + nodePath;
+                                }
+                                if (nodePath.endsWith("/")) {
+                                    nodePath = nodePath.substring(0, nodePath.length() - 1);
+                                }
+                                // 没有用例的路径
+                                nodePaths.add(nodePath);
+                            }
                         }
                     }
                 }
             }
+            //检查目录合规性
+            this.validate();
         } catch (Exception ex) {
-            processBuffer.append(Translator.get("incorrect_format"));
-            LogUtil.error(ex.getMessage());
             return ex.getMessage();
         }
         return process.toString();

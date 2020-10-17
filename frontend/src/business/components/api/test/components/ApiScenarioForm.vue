@@ -29,7 +29,7 @@
 
     <el-tabs v-model="activeName" :disabled="isReadOnly">
       <el-tab-pane :label="$t('api_test.scenario.variables')" name="parameters">
-        <ms-api-scenario-variables :isShowEnable="true" :is-read-only="isReadOnly" :items="scenario.variables"
+        <ms-api-scenario-variables :is-read-only="isReadOnly" :items="scenario.variables"
                                    :description="$t('api_test.scenario.kv_description')"/>
       </el-tab-pane>
       <el-tab-pane :label="$t('api_test.scenario.headers')" name="headers">
@@ -48,6 +48,9 @@
         <ms-dubbo-registry-center :registry="scenario.dubboConfig.registryCenter" :is-read-only="isReadOnly"/>
         <div class="dubbo-config-title">Consumer & Service</div>
         <ms-dubbo-consumer-service :consumer="scenario.dubboConfig.consumerAndService" :is-read-only="isReadOnly"/>
+      </el-tab-pane>
+      <el-tab-pane :label="$t('api_test.environment.tcp_config')" name="tcp">
+        <ms-tcp-config :config="scenario.tcpConfig" :is-read-only="isReadOnly"/>
       </el-tab-pane>
     </el-tabs>
 
@@ -68,10 +71,12 @@ import MsDubboConfigCenter from "@/business/components/api/test/components/reque
 import MsDubboConsumerService from "@/business/components/api/test/components/request/dubbo/ConsumerAndService";
 import MsDatabaseConfig from "./request/database/DatabaseConfig";
 import {parseEnvironment} from "../model/EnvironmentModel";
+import MsTcpConfig from "@/business/components/api/test/components/request/tcp/TcpConfig";
 
 export default {
   name: "MsApiScenarioForm",
   components: {
+    MsTcpConfig,
     MsDatabaseConfig,
     MsDubboConsumerService,
     MsDubboConfigCenter, MsDubboRegistryCenter, ApiEnvironmentConfig, MsApiScenarioVariables, MsApiKeyValue

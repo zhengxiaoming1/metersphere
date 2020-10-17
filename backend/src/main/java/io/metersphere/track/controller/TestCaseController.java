@@ -2,6 +2,7 @@ package io.metersphere.track.controller;
 
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
+import io.metersphere.base.domain.FileMetadata;
 import io.metersphere.base.domain.Project;
 import io.metersphere.base.domain.TestCase;
 import io.metersphere.base.domain.TestCaseWithBLOBs;
@@ -10,12 +11,19 @@ import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
 import io.metersphere.commons.utils.SessionUtils;
 import io.metersphere.excel.domain.ExcelResponse;
+import io.metersphere.service.CheckOwnerService;
+import io.metersphere.service.FileService;
 import io.metersphere.track.dto.TestCaseDTO;
+import io.metersphere.track.request.testcase.EditTestCaseRequest;
 import io.metersphere.track.request.testcase.QueryTestCaseRequest;
 import io.metersphere.track.request.testcase.TestCaseBatchRequest;
+import io.metersphere.track.request.testplan.FileOperationRequest;
 import io.metersphere.track.service.TestCaseService;
 import org.apache.shiro.authz.annotation.Logical;
 import org.apache.shiro.authz.annotation.RequiresRoles;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -30,6 +38,10 @@ public class TestCaseController {
 
     @Resource
     TestCaseService testCaseService;
+    @Resource
+    private CheckOwnerService checkOwnerService;
+    @Resource
+    private FileService fileService;
 
     @PostMapping("/list/{goPage}/{pageSize}")
     public Pager<List<TestCaseDTO>> list(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
@@ -39,6 +51,7 @@ public class TestCaseController {
 
     @GetMapping("/list/{projectId}")
     public List<TestCaseDTO> list(@PathVariable String projectId) {
+        checkOwnerService.checkProjectOwner(projectId);
         QueryTestCaseRequest request = new QueryTestCaseRequest();
         request.setProjectId(projectId);
         return testCaseService.listTestCase(request);
@@ -47,6 +60,7 @@ public class TestCaseController {
 
     @GetMapping("/list/method/{projectId}")
     public List<TestCaseDTO> listByMethod(@PathVariable String projectId) {
+        checkOwnerService.checkProjectOwner(projectId);
         QueryTestCaseRequest request = new QueryTestCaseRequest();
         request.setProjectId(projectId);
         return testCaseService.listTestCaseMthod(request);
@@ -58,6 +72,7 @@ public class TestCaseController {
         String currentWorkspaceId = SessionUtils.getCurrentWorkspaceId();
         QueryTestCaseRequest request = new QueryTestCaseRequest();
         request.setWorkspaceId(currentWorkspaceId);
+        request.setUserId(SessionUtils.getUserId());
         return testCaseService.recentTestPlans(request, count);
     }
 
@@ -66,48 +81,54 @@ public class TestCaseController {
         return testCaseService.getTestCaseByNodeId(nodeIds);
     }
 
-    @PostMapping("/name")
-    public List<TestCase> getTestCaseNames(@RequestBody QueryTestCaseRequest request) {
-        return testCaseService.getTestCaseNames(request);
+    @PostMapping("/name/{goPage}/{pageSize}")
+    public Pager<List<TestCase>> getTestCaseNames(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
+        Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+        return PageUtils.setPageInfo(page,testCaseService.getTestCaseNames(request));
     }
 
-    @PostMapping("/reviews/case")
-    public List<TestCase> getReviewCase(@RequestBody QueryTestCaseRequest request) {
-        return testCaseService.getReviewCase(request);
+    @PostMapping("/reviews/case/{goPage}/{pageSize}")
+    public Pager<List<TestCase>> getReviewCase(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
+        Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+        return PageUtils.setPageInfo(page, testCaseService.getReviewCase(request));
     }
 
     @GetMapping("/get/{testCaseId}")
     public TestCaseWithBLOBs getTestCase(@PathVariable String testCaseId) {
+        checkOwnerService.checkTestCaseOwner(testCaseId);
         return testCaseService.getTestCase(testCaseId);
     }
 
     @GetMapping("/project/{testCaseId}")
     public Project getProjectByTestCaseId(@PathVariable String testCaseId) {
+        checkOwnerService.checkTestCaseOwner(testCaseId);
         return testCaseService.getProjectByTestCaseId(testCaseId);
     }
 
-    @PostMapping("/add")
+    @PostMapping(value = "/add", consumes = {"multipart/form-data"})
     @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
-    public void addTestCase(@RequestBody TestCaseWithBLOBs testCase) {
-        testCaseService.addTestCase(testCase);
+    public void addTestCase(@RequestPart("request") TestCaseWithBLOBs testCase, @RequestPart(value = "file") List<MultipartFile> files) {
+        testCaseService.save(testCase, files);
     }
 
-    @PostMapping("/edit")
+    @PostMapping(value = "/edit", consumes = {"multipart/form-data"})
     @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
-    public void editTestCase(@RequestBody TestCaseWithBLOBs testCase) {
-        testCaseService.editTestCase(testCase);
+    public void editTestCase(@RequestPart("request") EditTestCaseRequest request, @RequestPart(value = "file") List<MultipartFile> files) {
+        testCaseService.edit(request, files);
     }
 
     @PostMapping("/delete/{testCaseId}")
     @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public int deleteTestCase(@PathVariable String testCaseId) {
+        checkOwnerService.checkTestCaseOwner(testCaseId);
         return testCaseService.deleteTestCase(testCaseId);
     }
 
     @PostMapping("/import/{projectId}/{userId}")
     @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
-    public ExcelResponse testCaseImport(MultipartFile file, @PathVariable String projectId,@PathVariable String userId) throws NoSuchFieldException {
-        return testCaseService.testCaseImport(file, projectId,userId);
+    public ExcelResponse testCaseImport(MultipartFile file, @PathVariable String projectId, @PathVariable String userId) {
+        checkOwnerService.checkProjectOwner(projectId);
+        return testCaseService.testCaseImport(file, projectId, userId);
     }
 
     @GetMapping("/export/template")
@@ -115,6 +136,7 @@ public class TestCaseController {
     public void testCaseTemplateExport(HttpServletResponse response) {
         testCaseService.testCaseTemplateExport(response);
     }
+
     @GetMapping("/export/xmindTemplate")
     @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public void xmindTemplate(HttpServletResponse response) {
@@ -137,6 +159,20 @@ public class TestCaseController {
     @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public void deleteTestCaseBath(@RequestBody TestCaseBatchRequest request) {
         testCaseService.deleteTestCaseBath(request);
+    }
+
+    @GetMapping("/file/metadata/{caseId}")
+    public List<FileMetadata> getFileMetadata(@PathVariable String caseId) {
+        return fileService.getFileMetadataByCaseId(caseId);
+    }
+
+    @PostMapping("/file/download")
+    public ResponseEntity<byte[]> downloadJmx(@RequestBody FileOperationRequest fileOperationRequest) {
+        byte[] bytes = fileService.loadFileAsBytes(fileOperationRequest.getId());
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/octet-stream"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileOperationRequest.getName() + "\"")
+                .body(bytes);
     }
 
 }

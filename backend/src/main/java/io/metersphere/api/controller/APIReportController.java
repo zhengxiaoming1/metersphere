@@ -11,6 +11,7 @@ import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
 import io.metersphere.commons.utils.SessionUtils;
 import io.metersphere.dto.DashboardTestDTO;
+import io.metersphere.service.CheckOwnerService;
 import org.apache.shiro.authz.annotation.Logical;
 import org.apache.shiro.authz.annotation.RequiresRoles;
 import org.springframework.web.bind.annotation.*;
@@ -25,18 +26,22 @@ public class APIReportController {
 
     @Resource
     private APIReportService apiReportService;
+    @Resource
+    private CheckOwnerService checkOwnerService;
 
     @GetMapping("recent/{count}")
     public List<APIReportResult> recentTest(@PathVariable int count) {
         String currentWorkspaceId = SessionUtils.getCurrentWorkspaceId();
         QueryAPIReportRequest request = new QueryAPIReportRequest();
         request.setWorkspaceId(currentWorkspaceId);
+        request.setUserId(SessionUtils.getUserId());
         PageHelper.startPage(1, count, true);
         return apiReportService.recentTest(request);
     }
 
     @GetMapping("/list/{testId}")
     public List<APIReportResult> listByTestId(@PathVariable String testId) {
+        checkOwnerService.checkApiTestOwner(testId);
         return apiReportService.listByTestId(testId);
     }
 

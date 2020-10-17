@@ -6,7 +6,7 @@
                          :show-create="false" :tip="$t('commons.search_by_name_or_id')">
           <template v-slot:title>
             <node-breadcrumb class="table-title" :nodes="selectParentNodes" @refresh="refresh"
-                             :title="$t('test_track.review_view.all_review')"/>
+                             :title="$t('test_track.review_view.all_case')"/>
           </template>
           <template v-slot:button>
             <ms-table-button :is-tester-permission="true" icon="el-icon-video-play"
@@ -104,13 +104,12 @@
         </el-table-column>
 
         <el-table-column
-          prop="status"
           :filters="statusFilters"
           column-key="status"
           :label="$t('test_track.review_view.execute_result')">
           <template v-slot:default="scope">
             <span class="el-dropdown-link">
-              <status-table-item :value="scope.row.status"/>
+              <review-status :value="scope.row.reviewStatus"/>
             </span>
           </template>
         </el-table-column>
@@ -170,6 +169,7 @@ import {_filter, _sort, checkoutTestManagerOrTestUser, hasRoles} from "../../../
 import {TEST_CASE_CONFIGS} from "../../../../common/components/search/search-components";
 import {ROLE_TEST_MANAGER, ROLE_TEST_USER} from "../../../../../../common/js/constants";
 import TestReviewTestCaseEdit from "./TestReviewTestCaseEdit";
+import ReviewStatus from "@/business/components/track/case/components/ReviewStatus";
 
 export default {
   name: "TestReviewTestCaseList",
@@ -177,7 +177,7 @@ export default {
     MsTableOperatorButton, MsTableOperator, MethodTableItem, TypeTableItem,
     StatusTableItem, PriorityTableItem, StatusEdit,
     ExecutorEdit, MsTipButton, TestReviewTestCaseEdit, MsTableHeader,
-    NodeBreadcrumb, MsTableButton, ShowMoreBtn, BatchEdit, MsTablePagination
+    NodeBreadcrumb, MsTableButton, ShowMoreBtn, BatchEdit, MsTablePagination, ReviewStatus
   },
   data() {
     return {
@@ -207,9 +207,9 @@ export default {
         {text: this.$t('commons.api'), value: 'api'}
       ],
       statusFilters: [
-        {text: this.$t('test_track.plan.plan_status_prepare'), value: 'Prepare'},
-        {text: this.$t('test_track.plan_view.pass'), value: 'Pass'},
-        {text: '未通过', value: 'UnPass'},
+        {text: this.$t('test_track.case.status_prepare'), value: 'Prepare'},
+        {text: this.$t('test_track.case.status_pass'), value: 'Pass'},
+        {text: this.$t('test_track.case.status_un_pass'), value: 'UnPass'},
       ],
       showMore: false,
       buttons: [

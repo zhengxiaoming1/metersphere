@@ -22,11 +22,12 @@
 
 <script>
   import MsDialogFooter from '../../common/components/MsDialogFooter'
-  import {Scenario, Test} from "./model/ScenarioModel"
+  import {Test} from "./model/ScenarioModel"
   import MsApiScenarioConfig from "./components/ApiScenarioConfig";
   import MsApiReportStatus from "../report/ApiReportStatus";
   import MsApiReportDialog from "./ApiReportDialog";
   import {getUUID} from "@/common/js/utils";
+  import {parseEnvironment} from "./model/EnvironmentModel";
 
 
   export default {
@@ -105,11 +106,17 @@
           let environments = response.data;
           let environmentMap = new Map();
           environments.forEach(environment => {
+            parseEnvironment(environment);
             environmentMap.set(environment.id, environment);
           });
           this.test.scenarioDefinition.forEach(scenario => {
               if (scenario.environmentId) {
-                scenario.environment = environmentMap.get(scenario.environmentId);
+                let env = environmentMap.get(scenario.environmentId);
+                if (!env) {
+                  scenario.environmentId = undefined;
+                } else {
+                  scenario.environment = env;
+                }
               }
             }
           )
@@ -149,36 +156,10 @@
       },
       save(callback) {
         this.change = false;
-        let url = "/api/create";
-        let bodyFiles = this.getBodyUploadFiles();
-        this.result = this.$request(this.getOptions(url, bodyFiles), () => {
+        let url = "/api/create/merge";
+        this.result = this.$request(this.getOptions(url, this.selectIds), () => {
           if (callback) callback();
         });
-      },
-      getBodyUploadFiles() {
-        let bodyUploadFiles = [];
-        this.test.bodyUploadIds = [];
-        this.test.scenarioDefinition.forEach(scenario => {
-          scenario.requests.forEach(request => {
-            if (request.body) {
-              request.body.kvs.forEach(param => {
-                if (param.files) {
-                  param.files.forEach(item => {
-                    if (item.file) {
-                      let fileId = getUUID().substring(0, 8);
-                      item.name = item.file.name;
-                      item.id = fileId;
-                      this.test.bodyUploadIds.push(fileId);
-                      bodyUploadFiles.push(item.file);
-                      // item.file = undefined;
-                    }
-                  });
-                }
-              });
-            }
-          });
-        });
-        return bodyUploadFiles;
       },
       runTest() {
         this.result = this.$post("/api/run", {id: this.test.id, triggerMode: 'MANUAL'}, (response) => {
@@ -189,16 +170,14 @@
           this.test = ""
         });
       },
-      getOptions(url, bodyFiles) {
+      getOptions(url, selectIds) {
 
         let formData = new FormData();
-        if (bodyFiles) {
-          bodyFiles.forEach(f => {
-            formData.append("files", f);
-          })
-        }
-        let requestJson = JSON.stringify(this.test);
-        formData.append('request', new Blob([requestJson], {
+        formData.append('request', new Blob([JSON.stringify(this.test)], {
+          type: "application/json"
+        }));
+
+        formData.append('selectIds', new Blob([JSON.stringify(Array.from(selectIds))], {
           type: "application/json"
         }));
 

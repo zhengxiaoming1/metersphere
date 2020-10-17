@@ -71,7 +71,6 @@ public class APIBackendListenerClient extends AbstractBackendListenerClient impl
 
         // 一个脚本里可能包含多个场景(ThreadGroup)，所以要区分开，key: 场景Id
         final Map<String, ScenarioResult> scenarios = new LinkedHashMap<>();
-
         queue.forEach(result -> {
             // 线程名称: <场景名> <场景Index>-<请求Index>, 例如：Scenario 2-1
             String scenarioName = StringUtils.substringBeforeLast(result.getThreadName(), THREAD_SPLIT);
@@ -119,18 +118,14 @@ public class APIBackendListenerClient extends AbstractBackendListenerClient impl
         queue.clear();
         super.teardownTest(context);
         NoticeService noticeService = CommonBeanFactory.getBean(NoticeService.class);
-        List<NoticeDetail> notice = null;
         try {
-            notice = noticeService.queryNotice(testResult.getTestId());
+            List<NoticeDetail> noticeList = noticeService.queryNotice(testResult.getTestId());
+            MailService mailService = CommonBeanFactory.getBean(MailService.class);
+            mailService.sendApiNotification(report, noticeList);
         } catch (Exception e) {
             LogUtil.error(e);
         }
-        MailService mailService = CommonBeanFactory.getBean(MailService.class);
-        try {
-            mailService.sendHtml(report.getId(), notice, report.getStatus(), "api");
-        } catch (Exception e) {
-            LogUtil.error(e);
-        }
+
     }
 
     private RequestResult getRequestResult(SampleResult result) {
@@ -158,6 +153,21 @@ public class APIBackendListenerClient extends AbstractBackendListenerClient impl
         responseResult.setResponseTime(result.getTime());
         responseResult.setResponseMessage(result.getResponseMessage());
 
+        if (JMeterVars.get(result.hashCode()) != null) {
+            List<String> vars = new LinkedList<>();
+            JMeterVars.get(result.hashCode()).entrySet().parallelStream().reduce(vars, (first, second) -> {
+                first.add(second.getKey() + "：" + second.getValue());
+                return first;
+            }, (first, second) -> {
+                if (first == second) {
+                    return first;
+                }
+                first.addAll(second);
+                return first;
+            });
+            responseResult.setVars(StringUtils.join(vars, "\n"));
+            JMeterVars.remove(result.hashCode());
+        }
         for (AssertionResult assertionResult : result.getAssertionResults()) {
             ResponseAssertionResult responseAssertionResult = getResponseAssertionResult(assertionResult);
             if (responseAssertionResult.isPass()) {
@@ -194,7 +204,7 @@ public class APIBackendListenerClient extends AbstractBackendListenerClient impl
         ResponseAssertionResult responseAssertionResult = new ResponseAssertionResult();
         responseAssertionResult.setMessage(assertionResult.getFailureMessage());
         responseAssertionResult.setName(assertionResult.getName());
-        responseAssertionResult.setPass(!assertionResult.isFailure());
+        responseAssertionResult.setPass(!assertionResult.isFailure() && !assertionResult.isError());
         return responseAssertionResult;
     }
 

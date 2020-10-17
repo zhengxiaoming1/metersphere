@@ -9,6 +9,7 @@ import io.metersphere.commons.constants.RoleConstants;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
 import io.metersphere.commons.utils.SessionUtils;
+import io.metersphere.service.CheckOwnerService;
 import io.metersphere.track.dto.TestCaseReviewDTO;
 import io.metersphere.track.dto.TestReviewDTOWithMetric;
 import io.metersphere.track.request.testreview.ReviewRelevanceRequest;
@@ -25,15 +26,17 @@ import java.util.List;
 
 @RequestMapping("/test/case/review")
 @RestController
+@RequiresRoles(value = {RoleConstants.TEST_MANAGER, RoleConstants.TEST_USER, RoleConstants.TEST_VIEWER}, logical = Logical.OR)
 public class TestCaseReviewController {
 
     @Resource
     TestCaseReviewService testCaseReviewService;
     @Resource
     TestReviewProjectService testReviewProjectService;
+    @Resource
+    CheckOwnerService checkOwnerService;
 
     @PostMapping("/list/{goPage}/{pageSize}")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public Pager<List<TestCaseReviewDTO>> list(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryCaseReviewRequest request) {
         Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
         return PageUtils.setPageInfo(page, testCaseReviewService.listCaseReview(request));
@@ -46,19 +49,16 @@ public class TestCaseReviewController {
     }
 
     @PostMapping("/project")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public List<Project> getProjectByReviewId(@RequestBody TestCaseReview request) {
         return testCaseReviewService.getProjectByReviewId(request);
     }
 
     @PostMapping("/reviewer")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public List<User> getUserByReviewId(@RequestBody TestCaseReview request) {
         return testCaseReviewService.getUserByReviewId(request);
     }
 
     @GetMapping("/recent/{count}")
-    @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public List<TestCaseReviewDTO> recentTestPlans(@PathVariable int count) {
         String currentWorkspaceId = SessionUtils.getCurrentWorkspaceId();
         PageHelper.startPage(1, count, true);
@@ -74,6 +74,7 @@ public class TestCaseReviewController {
     @GetMapping("/delete/{reviewId}")
     @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public void deleteCaseReview(@PathVariable String reviewId) {
+        checkOwnerService.checkTestReviewOwner(reviewId);
         testCaseReviewService.deleteCaseReview(reviewId);
     }
 
@@ -106,12 +107,14 @@ public class TestCaseReviewController {
 
     @PostMapping("/get/{reviewId}")
     public TestCaseReview getTestReview(@PathVariable String reviewId) {
+        checkOwnerService.checkTestReviewOwner(reviewId);
         return testCaseReviewService.getTestReview(reviewId);
     }
 
     @PostMapping("/edit/status/{reviewId}")
     @RequiresRoles(value = {RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public void editTestPlanStatus(@PathVariable String reviewId) {
+        checkOwnerService.checkTestReviewOwner(reviewId);
         testCaseReviewService.editTestReviewStatus(reviewId);
     }
 

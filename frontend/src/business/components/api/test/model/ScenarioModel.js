@@ -25,7 +25,7 @@ import {
   ThreadGroup,
   XPath2Extractor,
   IfController as JMXIfController,
-  ConstantTimer as JMXConstantTimer,
+  ConstantTimer as JMXConstantTimer, TCPSampler,
 } from "./JMX";
 import Mock from "mockjs";
 import {funcFilters} from "@/common/js/func-filter";
@@ -111,12 +111,16 @@ export const EXTRACT_TYPE = {
 
 export class BaseConfig {
 
-  set(options) {
+  set(options, notUndefined) {
     options = this.initOptions(options)
     for (let name in options) {
       if (options.hasOwnProperty(name)) {
         if (!(this[name] instanceof Array)) {
-          this[name] = options[name];
+          if (notUndefined === true) {
+            this[name] = options[name] === undefined ? this[name] : options[name];
+          } else {
+            this[name] = options[name];
+          }
         }
       }
     }
@@ -219,6 +223,7 @@ export class Scenario extends BaseConfig {
     this.enableCookieShare = false;
     this.enable = true;
     this.databaseConfigs = [];
+    this.tcpConfig = undefined;
 
     this.set(options);
     this.sets({
@@ -234,6 +239,7 @@ export class Scenario extends BaseConfig {
     options.requests = options.requests || [new RequestFactory()];
     options.databaseConfigs = options.databaseConfigs || [];
     options.dubboConfig = new DubboConfig(options.dubboConfig);
+    options.tcpConfig = new TCPConfig(options.tcpConfig);
     return options;
   }
 
@@ -286,6 +292,7 @@ export class RequestFactory {
     HTTP: "HTTP",
     DUBBO: "DUBBO",
     SQL: "SQL",
+    TCP: "TCP",
   }
 
   constructor(options = {}) {
@@ -295,6 +302,8 @@ export class RequestFactory {
         return new DubboRequest(options);
       case RequestFactory.TYPES.SQL:
         return new SqlRequest(options);
+      case RequestFactory.TYPES.TCP:
+        return new TCPRequest(options);
       default:
         return new HttpRequest(options);
     }
@@ -305,9 +314,15 @@ export class Request extends BaseConfig {
   constructor(type, options = {}) {
     super();
     this.type = type;
-    options.id = options.id || uuid();
-    this.timer = options.timer = new ConstantTimer(options.timer);
-    this.controller = options.controller = new IfController(options.controller);
+    this.id = options.id || uuid();
+    this.name = options.name;
+    this.enable = options.enable === undefined ? true : options.enable;
+    this.assertions = new Assertions(options.assertions);
+    this.extract = new Extract(options.extract);
+    this.jsr223PreProcessor = new JSR223Processor(options.jsr223PreProcessor);
+    this.jsr223PostProcessor = new JSR223Processor(options.jsr223PostProcessor);
+    this.timer = new ConstantTimer(options.timer);
+    this.controller = new IfController(options.controller);
   }
 
   showType() {
@@ -322,39 +337,21 @@ export class Request extends BaseConfig {
 export class HttpRequest extends Request {
   constructor(options) {
     super(RequestFactory.TYPES.HTTP, options);
-    this.name = undefined;
-    this.url = undefined;
-    this.path = undefined;
-    this.method = undefined;
+    this.url = options.url;
+    this.path = options.path;
+    this.method = options.method || "GET";
     this.parameters = [];
     this.headers = [];
-    this.body = undefined;
-    this.assertions = undefined;
-    this.extract = undefined;
-    this.environment = undefined;
-    this.useEnvironment = undefined;
+    this.body = new Body(options.body);
+    this.environment = options.environment;
+    this.useEnvironment = options.useEnvironment;
     this.debugReport = undefined;
-    this.beanShellPreProcessor = undefined;
-    this.beanShellPostProcessor = undefined;
-    this.jsr223PreProcessor = undefined;
-    this.jsr223PostProcessor = undefined;
-    this.enable = true;
-    this.connectTimeout = 60 * 1000;
-    this.responseTimeout = undefined;
-    this.followRedirects = true;
+    this.doMultipartPost = options.doMultipartPost;
+    this.connectTimeout = options.connectTimeout || 60 * 1000;
+    this.responseTimeout = options.responseTimeout;
+    this.followRedirects = options.followRedirects === undefined ? true : options.followRedirects;
 
-    this.set(options);
     this.sets({parameters: KeyValue, headers: KeyValue}, options);
-  }
-
-  initOptions(options = {}) {
-    options.method = options.method || "GET";
-    options.body = new Body(options.body);
-    options.assertions = new Assertions(options.assertions);
-    options.extract = new Extract(options.extract);
-    options.jsr223PreProcessor = new JSR223Processor(options.jsr223PreProcessor);
-    options.jsr223PostProcessor = new JSR223Processor(options.jsr223PostProcessor);
-    return options;
   }
 
   isValid(environmentId, environment) {
@@ -412,7 +409,6 @@ export class DubboRequest extends Request {
 
   constructor(options = {}) {
     super(RequestFactory.TYPES.DUBBO, options);
-    this.name = options.name;
     this.protocol = options.protocol || DubboRequest.PROTOCOLS.DUBBO;
     this.interface = options.interface;
     this.method = options.method;
@@ -421,16 +417,9 @@ export class DubboRequest extends Request {
     this.consumerAndService = new ConsumerAndService(options.consumerAndService);
     this.args = [];
     this.attachmentArgs = [];
-    this.assertions = new Assertions(options.assertions);
-    this.extract = new Extract(options.extract);
     // Scenario.dubboConfig
     this.dubboConfig = undefined;
     this.debugReport = undefined;
-    this.beanShellPreProcessor = new BeanShellProcessor(options.beanShellPreProcessor);
-    this.beanShellPostProcessor = new BeanShellProcessor(options.beanShellPostProcessor);
-    this.enable = options.enable === undefined ? true : options.enable;
-    this.jsr223PreProcessor = new JSR223Processor(options.jsr223PreProcessor);
-    this.jsr223PostProcessor = new JSR223Processor(options.jsr223PostProcessor);
 
     this.sets({args: KeyValue, attachmentArgs: KeyValue}, options);
   }
@@ -485,23 +474,17 @@ export class SqlRequest extends Request {
 
   constructor(options = {}) {
     super(RequestFactory.TYPES.SQL, options);
-    this.id = options.id || uuid();
-    this.name = options.name;
     this.useEnvironment = options.useEnvironment;
     this.resultVariable = options.resultVariable;
     this.variableNames = options.variableNames;
+    this.variables = [];
     this.debugReport = undefined;
     this.dataSource = options.dataSource;
     this.query = options.query;
     // this.queryType = options.queryType;
     this.queryTimeout = options.queryTimeout || 60000;
-    this.enable = options.enable === undefined ? true : options.enable;
-    this.assertions = new Assertions(options.assertions);
-    this.extract = new Extract(options.extract);
-    this.jsr223PreProcessor = new JSR223Processor(options.jsr223PreProcessor);
-    this.jsr223PostProcessor = new JSR223Processor(options.jsr223PostProcessor);
 
-    this.sets({args: KeyValue, attachmentArgs: KeyValue}, options);
+    this.sets({args: KeyValue, attachmentArgs: KeyValue, variables: KeyValue}, options);
   }
 
   isValid() {
@@ -534,6 +517,67 @@ export class SqlRequest extends Request {
 
   clone() {
     return new SqlRequest(this);
+  }
+}
+
+export class TCPConfig extends BaseConfig {
+  static CLASSES = ["TCPClientImpl", "BinaryTCPClientImpl", "LengthPrefixedBinaryTCPClientImpl"]
+
+  constructor(options = {}) {
+    super();
+    this.classname = options.classname || TCPConfig.CLASSES[0];
+    this.server = options.server;
+    this.port = options.port;
+    this.ctimeout = options.ctimeout; // Connect
+    this.timeout = options.timeout; // Response
+
+    this.reUseConnection = options.reUseConnection === undefined ? true : options.reUseConnection;
+    this.nodelay = options.nodelay === undefined ? false : options.nodelay;
+    this.closeConnection = options.closeConnection === undefined ? false : options.closeConnection;
+    this.soLinger = options.soLinger;
+    this.eolByte = options.eolByte;
+
+    this.username = options.username;
+    this.password = options.password;
+  }
+}
+
+export class TCPRequest extends Request {
+  constructor(options = {}) {
+    super(RequestFactory.TYPES.TCP, options);
+    this.useEnvironment = options.useEnvironment;
+    this.debugReport = undefined;
+
+    //设置TCPConfig的属性
+    this.set(new TCPConfig(options));
+
+    this.request = options.request;
+  }
+
+  isValid() {
+    if (this.enable) {
+      if (!this.server) {
+        return {
+          isValid: false,
+          info: 'api_test.request.tcp.server_cannot_be_empty'
+        }
+      }
+    }
+    return {
+      isValid: true
+    }
+  }
+
+  showType() {
+    return "TCP";
+  }
+
+  showMethod() {
+    return "TCP";
+  }
+
+  clone() {
+    return new TCPRequest(this);
   }
 }
 
@@ -658,7 +702,7 @@ export class Body extends BaseConfig {
 export class KeyValue extends BaseConfig {
   constructor(options) {
     options = options || {};
-    options.enable = options.enable != false ? true : false;
+    options.enable = options.enable === undefined ? true : options.enable;
 
     super();
     this.name = undefined;
@@ -945,7 +989,7 @@ class JMXHttpRequest {
       this.connectTimeout = request.connectTimeout;
       this.responseTimeout = request.responseTimeout;
       this.followRedirects = request.followRedirects;
-
+      this.doMultipartPost = request.doMultipartPost;
     }
   }
 
@@ -1003,6 +1047,30 @@ class JMXDubboRequest {
   }
 }
 
+class JMXTCPRequest {
+  constructor(request, scenario) {
+    let obj = request.clone();
+    if (request.useEnvironment) {
+      obj.set(scenario.environment.config.tcpConfig, true);
+      return obj;
+    }
+
+    this.copy(this, scenario.tcpConfig);
+
+    return obj;
+  }
+
+  copy(target, source) {
+    for (let key in source) {
+      if (source.hasOwnProperty(key)) {
+        if (source[key] !== undefined && !target[key]) {
+          target[key] = source[key];
+        }
+      }
+    }
+  }
+}
+
 class JMeterTestPlan extends Element {
   constructor() {
     super('jmeterTestPlan', {
@@ -1043,16 +1111,12 @@ class JMXGenerator {
         this.addScenarioHeaders(threadGroup, scenario);
 
         this.addScenarioCookieManager(threadGroup, scenario);
-        // 放在计划或线程组中，不建议放具体某个请求中
-        this.addDNSCacheManager(threadGroup, scenario);
 
         this.addJDBCDataSources(threadGroup, scenario);
-
         scenario.requests.forEach(request => {
           if (request.enable) {
             if (!request.isValid()) return;
             let sampler;
-
             if (request instanceof DubboRequest) {
               sampler = new DubboSample(request.name || "", new JMXDubboRequest(request, scenario.dubboConfig));
             } else if (request instanceof HttpRequest) {
@@ -1063,7 +1127,12 @@ class JMXGenerator {
             } else if (request instanceof SqlRequest) {
               request.dataSource = scenario.databaseConfigMap.get(request.dataSource);
               sampler = new JDBCSampler(request.name || "", request);
+              this.addRequestVariables(sampler, request);
+            } else if (request instanceof TCPRequest) {
+              sampler = new TCPSampler(request.name || "", new JMXTCPRequest(request, scenario));
             }
+
+            this.addDNSCacheManager(sampler, scenario.environment, request.useEnvironment);
 
             this.addRequestExtractor(sampler, request);
 
@@ -1120,34 +1189,40 @@ class JMXGenerator {
     }
   }
 
+  addRequestVariables(httpSamplerProxy, request) {
+    let name = request.name + " Variables";
+    let variables = this.filterKV(request.variables);
+    if (variables && variables.length > 0) {
+      httpSamplerProxy.put(new Arguments(name, variables));
+    }
+  }
+
   addScenarioCookieManager(threadGroup, scenario) {
     if (scenario.enableCookieShare) {
       threadGroup.put(new CookieManager(scenario.name));
     }
   }
 
-  addDNSCacheManager(threadGroup, scenario) {
-    if (scenario.requests.length < 1) {
-      return
-    }
-    let request = scenario.requests[0];
-    if (request.environment) {
-      let commonConfig = request.environment.config.commonConfig;
+  addDNSCacheManager(httpSamplerProxy, environment, useEnv) {
+    if (environment && useEnv === true) {
+      let commonConfig = environment.config.commonConfig;
       let hosts = commonConfig.hosts;
       if (commonConfig.enableHost && hosts.length > 0) {
-        let name = request.name + " DNSCacheManager";
+        let name = " DNSCacheManager";
         // 强化判断，如果未匹配到合适的host则不开启DNSCache
-        let domain = request.environment.config.httpConfig.domain;
+        let domain = environment.config.httpConfig.domain;
         let validHosts = [];
         hosts.forEach(item => {
-          let d = item.domain.trim().replace("http://", "").replace("https://", "");
-          if (item && d === domain.trim()) {
-            item.domain = d; // 域名去掉协议
-            validHosts.push(item);
+          if (item.domain !== undefined && domain !== undefined) {
+            let d = item.domain.trim().replace("http://", "").replace("https://", "");
+            if (d === domain.trim()) {
+              item.domain = d; // 域名去掉协议
+              validHosts.push(item);
+            }
           }
         });
         if (validHosts.length > 0) {
-          threadGroup.put(new DNSCacheManager(name, validHosts));
+          httpSamplerProxy.put(new DNSCacheManager(name, validHosts));
         }
       }
     }
@@ -1222,21 +1297,22 @@ class JMXGenerator {
     if (request.controller.isValid() && request.controller.enable) {
       if (request.controller instanceof IfController) {
         let name = request.controller.label();
-        let variable = request.controller.variable;
+        let variable = "\"" + request.controller.variable + "\"";
         let operator = request.controller.operator;
-        let value = request.controller.value;
+        let value = "\"" + request.controller.value + "\"";
+
         if (operator === "=~" || operator === "!~") {
-          value = "\".*" + value + ".*\"";
+          value = "\".*" + request.controller.value + ".*\"";
         }
 
         if (operator === "is empty") {
-          variable = "empty(\"" + variable + "\")";
+          variable = "empty(" + variable + ")";
           operator = "";
           value = "";
         }
 
         if (operator === "is not empty") {
-          variable = "!empty(\"" + variable + "\")";
+          variable = "!empty(" + variable + ")";
           operator = "";
           value = "";
         }
@@ -1297,7 +1373,7 @@ class JMXGenerator {
       body.push({name: '', value: request.body.raw, encode: false, enable: true});
     }
 
-    if (request.method != 'GET') {
+    if (request.method !== 'GET') {
       httpSamplerProxy.add(new HTTPSamplerArguments(body));
     }
   }
@@ -1306,7 +1382,7 @@ class JMXGenerator {
     let files = [];
     let kvs = this.filterKVFile(request.body.kvs);
     kvs.forEach(kv => {
-      if ((kv.enable != false) && kv.files) {
+      if ((kv.enable !== false) && kv.files) {
         kv.files.forEach(file => {
           let arg = {};
           arg.name = kv.name;

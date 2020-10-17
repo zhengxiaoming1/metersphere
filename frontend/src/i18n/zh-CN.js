@@ -1,5 +1,6 @@
 export default {
   commons: {
+    examples: '示例',
     help_documentation: '帮助文档',
     delete_cancelled: '已取消删除',
     workspace: '工作空间',
@@ -115,6 +116,7 @@ export default {
     id: 'ID',
     millisecond: '毫秒',
     cannot_be_null: '不能为空',
+    required: "{0}是必填的",
     already_exists: '名称不能重复',
     date: {
       select_date: '选择日期',
@@ -304,7 +306,7 @@ export default {
     api_test_report: '接口测试报告',
     load_test_report: '性能测试报告',
     test_plan_report: '测试计划报告',
-    recent: '最近的报告',
+    recent: '我最近的报告',
     search_by_name: '根据名称搜索',
     test_name: '所属测试',
     test_overview: '测试概览',
@@ -341,7 +343,7 @@ export default {
     same_project_test: '只能运行同一项目内的测试',
     already_exists: '测试名称不能重复',
     operating: '操作',
-    recent: '最近的测试',
+    recent: '我最近的测试',
     search_by_name: '根据名称搜索',
     project_name: '所属项目',
     delete_confirm: '确认删除测试: ',
@@ -435,6 +437,7 @@ export default {
       common_config: "通用配置",
       http_config: "HTTP配置",
       database_config: "数据库配置",
+      tcp_config: "TCP配置",
     },
     scenario: {
       scenario: "场景",
@@ -502,6 +505,7 @@ export default {
       connect_timeout: "连接超时",
       response_timeout: "响应超时",
       follow_redirects: "跟随重定向",
+      do_multipart_post: "对 POST 使用 multipart/form-data",
       body_upload_limit_size: "上传文件大小不能超过 500 MB!",
       condition: "条件",
       condition_variable: "变量，例如: ${var}",
@@ -540,6 +544,8 @@ export default {
         bean_shell_processor_tip: "仅支持 BeanShell 脚本",
         code_template_get_variable: "获取变量",
         code_template_set_variable: "设置变量",
+        code_template_get_global_variable: "获取全局变量",
+        code_template_set_global_variable: "设置全局变量",
         code_template_get_response_header: "获取响应头",
         code_template_get_response_code: "获取响应码",
         code_template_get_response_result: "获取响应结果"
@@ -569,6 +575,22 @@ export default {
         dataSource_cannot_be_empty: "SQL请求数据源不能为空",
         result_variable: "存储结果",
         variable_names: "按列存储",
+      },
+      tcp: {
+        server: "服务器名或IP",
+        port: "端口",
+        connect: "连接(ms)",
+        response: "响应(ms)",
+        re_use_connection: "Re-use connection",
+        no_delay: "设置无延迟",
+        close_connection: "关闭连接",
+        so_linger: "SO LINGER",
+        eol_byte: "行尾(EOL)字节值",
+        request: "要发送的文本",
+        username: "用户名",
+        password: "密码",
+        login: "登录设置",
+        server_cannot_be_empty: "服务器名或IP不能为空",
       }
     },
     api_import: {
@@ -632,9 +654,9 @@ export default {
     save: "保 存",
     return: "返 回",
     length_less_than: "长度必须小于",
-    recent_plan: "最近的计划",
-    recent_case: "最近的用例",
-    recent_review: "最近的评审",
+    recent_plan: "我最近的计划",
+    recent_case: "我最近的用例",
+    recent_review: "我最近的评审",
     pass_rate: "通过率",
     execution_result: ": 请选择执行结果",
     actual_result: ": 实际结果为空",
@@ -694,6 +716,11 @@ export default {
       batch_delete_case: '批量删除用例',
       batch_unlink: '批量取消关联',
       project_name: '所属项目',
+      status: '评审状态',
+      status_prepare: '未评审',
+      status_pass: '通过',
+      status_un_pass: '未通过',
+      cancel_relevance_project: "取消项目关联会同时取消该项目下已关联的测试用例",
       import: {
         import: "导入用例",
         case_import: "导入测试用例",
@@ -764,6 +791,12 @@ export default {
       pass: "通过",
       un_pass: "未通过",
       comment: "评论",
+      my_review: "我的评审",
+      my_create: "我创建的评审",
+      reviewed_by_me: "待我评审",
+      creator: "创建人",
+      done: "已评用例",
+      result_distribution: "结果分布"
     },
     comment: {
       no_comment: "暂无评论",
@@ -774,10 +807,11 @@ export default {
     },
     review_view: {
       review: "评审",
-      all_review: "全部评审",
+      all_case: "全部用例",
       start_review: "开始评审",
       relevance_case: "关联用例",
-      execute_result: "执行结果",
+      last_page: "已经到底了！",
+      execute_result: "评审结果",
     },
     module: {
       search: "搜索模块",
@@ -800,10 +834,12 @@ export default {
       my_plan: "我的计划",
       test_rate: "测试进度",
       tested_case: "已测用例",
+      review_progress: "评审进度"
     },
     plan_view: {
       plan: "计划",
       relevance_test_case: "关联测试用例",
+      cancel_all_relevance: "取消全部关联",
       executor: "执行人",
       execute_result: "执行结果",
       pass: "通过",
@@ -848,7 +884,8 @@ export default {
       report_template: "测试报告模版",
       test_detail: "测试详情",
       failure_case: "失败用例",
-      export_report: "导出报告"
+      export_report: "导出报告",
+      no_case_relevance: "没有关联用例",
     },
     issue: {
       issue: "缺陷",
@@ -861,9 +898,12 @@ export default {
       platform: "平台",
       operate: "操作",
       close: "关闭缺陷",
+      delete: "删除缺陷",
       title_description_required: "标题和描述必填",
       close_success: "关闭成功",
-      preview: "预览"
+      preview: "预览",
+      please_choose_current_owner: "请选择处理人",
+      tapd_current_owner: "Tapd平台处理人：",
     }
   },
   test_resource_pool: {
@@ -935,6 +975,8 @@ export default {
   schedule: {
     input_email: "请输入邮箱账号",
     event: "事件",
+    event_success: '执行成功',
+    event_failed: '执行失败',
     receiving_mode: "接收方式",
     receiver: "接收人",
     operation: "操作",
